@@ -1,0 +1,58 @@
+name: Update .tgelib
+
+on:
+  repository_dispatch:
+    types: [tge-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "tge version to pull (e.g. 3.0). Leave blank for latest."
+        required: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve target version
+        id: target
+        run: |
+          version="${{ github.event.client_payload.version }}"
+          if [ -z "$version" ]; then
+            version="${{ github.event.inputs.version }}"
+          fi
+          if [ -z "$version" ]; then
+            url="https://github.com/lbarto12/tge/releases/latest/download/tge-dist.tar.gz"
+            label="latest"
+          else
+            url="https://github.com/lbarto12/tge/releases/download/v${version}/tge-dist.tar.gz"
+            label="v${version}"
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "label=$label" >> "$GITHUB_OUTPUT"
+
+      - name: Download tge dist
+        run: |
+          curl -fL -o tge-dist.tar.gz "${{ steps.target.outputs.url }}"
+
+      - name: Replace .tgelib contents
+        run: |
+          rm -rf .tgelib
+          mkdir -p .tgelib
+          tar -xzf tge-dist.tar.gz -C .tgelib
+          rm tge-dist.tar.gz
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .tgelib
+          if git diff --cached --quiet; then
+            echo "No changes to .tgelib"
+            exit 0
+          fi
+          git commit -m "chore: update .tgelib to ${{ steps.target.outputs.label }}"
+          git push
